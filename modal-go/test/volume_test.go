@@ -165,3 +165,209 @@ func TestVolumeDeleteWithAllowMissingFalseThrows(t *testing.T) {
 
 	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
 }
+
+func TestVolumeList(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(
+		mock, "/VolumeList",
+		func(req *pb.VolumeListRequest) (*pb.VolumeListResponse, error) {
+			return pb.VolumeListResponse_builder{
+				Items: []*pb.VolumeListItem{
+					pb.VolumeListItem_builder{
+						VolumeId: "vo-aaa",
+						Metadata: pb.VolumeMetadata_builder{Name: "vol-a"}.Build(),
+					}.Build(),
+					pb.VolumeListItem_builder{
+						VolumeId: "vo-bbb",
+						Metadata: pb.VolumeMetadata_builder{Name: "vol-b"}.Build(),
+					}.Build(),
+				},
+			}.Build(), nil
+		},
+	)
+
+	items, err := mock.Volumes.List(ctx, nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(items).To(gomega.HaveLen(2))
+	g.Expect(items[0].VolumeID).To(gomega.Equal("vo-aaa"))
+	g.Expect(items[0].Name).To(gomega.Equal("vol-a"))
+	g.Expect(items[1].VolumeID).To(gomega.Equal("vo-bbb"))
+	g.Expect(items[1].Name).To(gomega.Equal("vol-b"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestVolumeCommit(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "/VolumeGetOrCreate",
+		func(req *pb.VolumeGetOrCreateRequest) (*pb.VolumeGetOrCreateResponse, error) {
+			return pb.VolumeGetOrCreateResponse_builder{VolumeId: "vo-test-commit"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "/VolumeCommit",
+		func(req *pb.VolumeCommitRequest) (*pb.VolumeCommitResponse, error) {
+			g.Expect(req.GetVolumeId()).To(gomega.Equal("vo-test-commit"))
+			return pb.VolumeCommitResponse_builder{}.Build(), nil
+		},
+	)
+
+	vol, err := mock.Volumes.FromName(ctx, "test-vol", &modal.VolumeFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	err = vol.Commit(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestVolumeReload(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "/VolumeGetOrCreate",
+		func(req *pb.VolumeGetOrCreateRequest) (*pb.VolumeGetOrCreateResponse, error) {
+			return pb.VolumeGetOrCreateResponse_builder{VolumeId: "vo-test-reload"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "/VolumeReload",
+		func(req *pb.VolumeReloadRequest) (*emptypb.Empty, error) {
+			g.Expect(req.GetVolumeId()).To(gomega.Equal("vo-test-reload"))
+			return &emptypb.Empty{}, nil
+		},
+	)
+
+	vol, err := mock.Volumes.FromName(ctx, "test-vol", &modal.VolumeFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	err = vol.Reload(ctx)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestVolumeRename(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "/VolumeGetOrCreate",
+		func(req *pb.VolumeGetOrCreateRequest) (*pb.VolumeGetOrCreateResponse, error) {
+			return pb.VolumeGetOrCreateResponse_builder{VolumeId: "vo-rename-me"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "/VolumeRename",
+		func(req *pb.VolumeRenameRequest) (*emptypb.Empty, error) {
+			g.Expect(req.GetVolumeId()).To(gomega.Equal("vo-rename-me"))
+			g.Expect(req.GetName()).To(gomega.Equal("new-name"))
+			return &emptypb.Empty{}, nil
+		},
+	)
+
+	vol, err := mock.Volumes.FromName(ctx, "old-name", &modal.VolumeFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	err = vol.Rename(ctx, "new-name")
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	g.Expect(vol.Name).To(gomega.Equal("new-name"))
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestVolumeRemoveFile(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "/VolumeGetOrCreate",
+		func(req *pb.VolumeGetOrCreateRequest) (*pb.VolumeGetOrCreateResponse, error) {
+			return pb.VolumeGetOrCreateResponse_builder{VolumeId: "vo-rm-file"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "/VolumeRemoveFile2",
+		func(req *pb.VolumeRemoveFile2Request) (*emptypb.Empty, error) {
+			g.Expect(req.GetVolumeId()).To(gomega.Equal("vo-rm-file"))
+			g.Expect(req.GetPath()).To(gomega.Equal("/data/old.txt"))
+			g.Expect(req.GetRecursive()).To(gomega.BeFalse())
+			return &emptypb.Empty{}, nil
+		},
+	)
+
+	vol, err := mock.Volumes.FromName(ctx, "test-vol", &modal.VolumeFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	err = vol.RemoveFile(ctx, "/data/old.txt", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestVolumeRemoveFileRecursive(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "/VolumeGetOrCreate",
+		func(req *pb.VolumeGetOrCreateRequest) (*pb.VolumeGetOrCreateResponse, error) {
+			return pb.VolumeGetOrCreateResponse_builder{VolumeId: "vo-rm-dir"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "/VolumeRemoveFile2",
+		func(req *pb.VolumeRemoveFile2Request) (*emptypb.Empty, error) {
+			g.Expect(req.GetRecursive()).To(gomega.BeTrue())
+			g.Expect(req.GetPath()).To(gomega.Equal("/data/subdir"))
+			return &emptypb.Empty{}, nil
+		},
+	)
+
+	vol, err := mock.Volumes.FromName(ctx, "test-vol", &modal.VolumeFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	err = vol.RemoveFile(ctx, "/data/subdir", &modal.VolumeRemoveFileParams{Recursive: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
+
+func TestVolumeCopyFiles(t *testing.T) {
+	t.Parallel()
+	g := gomega.NewWithT(t)
+	ctx := context.Background()
+
+	mock := newGRPCMockClient(t)
+
+	grpcmock.HandleUnary(mock, "/VolumeGetOrCreate",
+		func(req *pb.VolumeGetOrCreateRequest) (*pb.VolumeGetOrCreateResponse, error) {
+			return pb.VolumeGetOrCreateResponse_builder{VolumeId: "vo-copy"}.Build(), nil
+		},
+	)
+	grpcmock.HandleUnary(mock, "/VolumeCopyFiles2",
+		func(req *pb.VolumeCopyFiles2Request) (*emptypb.Empty, error) {
+			g.Expect(req.GetVolumeId()).To(gomega.Equal("vo-copy"))
+			g.Expect(req.GetSrcPaths()).To(gomega.ConsistOf("/src/a.txt", "/src/b.txt"))
+			g.Expect(req.GetDstPath()).To(gomega.Equal("/dst/"))
+			g.Expect(req.GetRecursive()).To(gomega.BeFalse())
+			return &emptypb.Empty{}, nil
+		},
+	)
+
+	vol, err := mock.Volumes.FromName(ctx, "test-vol", &modal.VolumeFromNameParams{CreateIfMissing: true})
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+	err = vol.CopyFiles(ctx, []string{"/src/a.txt", "/src/b.txt"}, "/dst/", nil)
+	g.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	g.Expect(mock.AssertExhausted()).ShouldNot(gomega.HaveOccurred())
+}
