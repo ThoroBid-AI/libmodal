@@ -367,10 +367,11 @@ func (t *Tunnel) TCPSocket() (string, int, error) {
 // we recommend calling [Sandbox.Detach] which disconnects your client from the sandbox and
 // cleans up any resources associated with the connection.
 type Sandbox struct {
-	SandboxID string
-	Stdin     io.WriteCloser
-	Stdout    io.ReadCloser
-	Stderr    io.ReadCloser
+	SandboxID  string
+	Stdin      io.WriteCloser
+	Stdout     io.ReadCloser
+	Stderr     io.ReadCloser
+	Filesystem *SandboxFilesystem
 
 	taskID  string
 	tunnels map[int]*Tunnel
@@ -398,6 +399,7 @@ func defaultSandboxPTYInfo() *pb.PTYInfo {
 // newSandbox creates a new Sandbox object from ID.
 func newSandbox(client *Client, sandboxID string) *Sandbox {
 	sb := &Sandbox{SandboxID: sandboxID, client: client}
+	sb.Filesystem = &SandboxFilesystem{sb: sb}
 	sb.attached.Store(true)
 	sb.Stdin = inputStreamSb(client.cpClient, sandboxID)
 	sb.Stdout = &lazyStreamReader{
@@ -1063,6 +1065,53 @@ func (s *sandboxServiceImpl) List(ctx context.Context, params *SandboxListParams
 			before = sandboxes[len(sandboxes)-1].GetCreatedAt()
 		}
 	}, nil
+}
+
+// WaitUntilReady blocks until the Sandbox is ready to accept connections, or the timeout elapses.
+// Returns an error if the Sandbox has already terminated before becoming ready.
+func (sb *Sandbox) WaitUntilReady(ctx context.Context, timeout time.Duration) error {
+	timeoutSecs := float32(timeout.Seconds())
+	resp, err := sb.client.cpClient.SandboxGetTaskId(ctx, pb.SandboxGetTaskIdRequest_builder{
+		SandboxId:      sb.SandboxID,
+		WaitUntilReady: true,
+		Timeout:        &timeoutSecs,
+	}.Build())
+	if err != nil {
+		return err
+	}
+	if resp.GetTaskResult() != nil {
+		return fmt.Errorf("Sandbox %s terminated before becoming ready: %v", sb.SandboxID, resp.GetTaskResult())
+	}
+	return nil
+}
+
+// ReloadVolumes reloads all volumes mounted in the Sandbox.
+func (sb *Sandbox) ReloadVolumes(ctx context.Context) error {
+	if err := sb.ensureTaskID(ctx); err != nil {
+		return err
+	}
+	_, err := sb.client.cpClient.ContainerReloadVolumes(ctx, pb.ContainerReloadVolumesRequest_builder{
+		TaskId: sb.taskID,
+	}.Build())
+	return err
+}
+
+// UnmountImage unmounts an image previously mounted at path in the Sandbox filesystem.
+// Since there is no dedicated UnmountImage RPC, this is implemented by running umount in the Sandbox.
+func (sb *Sandbox) UnmountImage(ctx context.Context, path string) error {
+	proc, err := sb.Exec(ctx, []string{"umount", path}, &SandboxExecParams{})
+	if err != nil {
+		return err
+	}
+	exitCode, err := proc.Wait(ctx)
+	if err != nil {
+		return err
+	}
+	if exitCode != 0 {
+		stderrBytes, _ := io.ReadAll(proc.Stderr)
+		return fmt.Errorf("umount %s failed with exit code %d: %s", path, exitCode, string(stderrBytes))
+	}
+	return nil
 }
 
 func getReturnCode(result *pb.GenericResult) *int {
