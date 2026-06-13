@@ -60,10 +60,27 @@ const (
 	FileEntryTypeSocket      FileEntryType = 5
 )
 
+// VolumeFsVersion selects the Modal Volume filesystem format used when CREATING
+// a volume. The zero value lets the server pick its default (currently v1).
+type VolumeFsVersion = pb.VolumeFsVersion
+
+const (
+	// VolumeVersionUnspecified defers to the server default (currently v1).
+	VolumeVersionUnspecified = pb.VolumeFsVersion_VOLUME_FS_VERSION_UNSPECIFIED
+	// VolumeVersionV1 is the original Volume format.
+	VolumeVersionV1 = pb.VolumeFsVersion_VOLUME_FS_VERSION_V1
+	// VolumeVersionV2 is the newer Volume format.
+	VolumeVersionV2 = pb.VolumeFsVersion_VOLUME_FS_VERSION_V2
+)
+
 // VolumeFromNameParams are options for finding Modal Volumes.
 type VolumeFromNameParams struct {
 	Environment     string
 	CreateIfMissing bool
+	// Version selects the filesystem format when CreateIfMissing creates a new
+	// volume. Ignored for an already-existing volume (it's returned as-is). The
+	// zero value (VolumeVersionUnspecified) lets the server default.
+	Version VolumeFsVersion
 }
 
 // VolumeEphemeralParams are options for client.Volumes.Ephemeral.
@@ -148,6 +165,7 @@ func (s *volumeServiceImpl) FromName(ctx context.Context, name string, params *V
 		DeploymentName:     name,
 		EnvironmentName:    environmentName(params.Environment, s.client.profile),
 		ObjectCreationType: creationType,
+		Version:            params.Version,
 	}.Build())
 
 	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
