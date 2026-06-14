@@ -83,13 +83,67 @@ func (e QueueFullError) Error() string {
 	return "QueueFullError: " + e.Exception
 }
 
-// SandboxFilesystemError is returned when an operation is attempted on a full Queue.
+// SandboxFilesystemError is returned when a sandbox filesystem operation fails.
 type SandboxFilesystemError struct {
 	Exception string
 }
 
 func (e SandboxFilesystemError) Error() string {
 	return "SandboxFilesystemError: " + e.Exception
+}
+
+// SandboxFilesystemNotFoundError is returned when a file or directory is not found in the sandbox filesystem.
+type SandboxFilesystemNotFoundError struct {
+	Exception string
+}
+
+func (e SandboxFilesystemNotFoundError) Error() string {
+	return "SandboxFilesystemNotFoundError: " + e.Exception
+}
+
+// SandboxFilesystemIsADirectoryError is returned when a file operation is attempted on a directory.
+type SandboxFilesystemIsADirectoryError struct {
+	Exception string
+}
+
+func (e SandboxFilesystemIsADirectoryError) Error() string {
+	return "SandboxFilesystemIsADirectoryError: " + e.Exception
+}
+
+// SandboxFilesystemNotADirectoryError is returned when a directory operation is attempted on a file.
+type SandboxFilesystemNotADirectoryError struct {
+	Exception string
+}
+
+func (e SandboxFilesystemNotADirectoryError) Error() string {
+	return "SandboxFilesystemNotADirectoryError: " + e.Exception
+}
+
+// SandboxFilesystemPermissionError is returned when a sandbox filesystem operation is denied due to permissions.
+type SandboxFilesystemPermissionError struct {
+	Exception string
+}
+
+func (e SandboxFilesystemPermissionError) Error() string {
+	return "SandboxFilesystemPermissionError: " + e.Exception
+}
+
+// SandboxFilesystemPathAlreadyExistsError is returned when a path already exists in the sandbox filesystem.
+type SandboxFilesystemPathAlreadyExistsError struct {
+	Exception string
+}
+
+func (e SandboxFilesystemPathAlreadyExistsError) Error() string {
+	return "SandboxFilesystemPathAlreadyExistsError: " + e.Exception
+}
+
+// SandboxFilesystemDirectoryNotEmptyError is returned when a directory is not empty during a remove operation.
+type SandboxFilesystemDirectoryNotEmptyError struct {
+	Exception string
+}
+
+func (e SandboxFilesystemDirectoryNotEmptyError) Error() string {
+	return "SandboxFilesystemDirectoryNotEmptyError: " + e.Exception
 }
 
 // SandboxTimeoutError is returned when Sandbox operations exceed the allowed time limit.
